@@ -288,7 +288,7 @@ export default function InventoryPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
-                        ${typeof product.price === 'number' ? product.price.toFixed(2) : 'N/A'}
+                        ₹{typeof product.price === 'number' ? product.price.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : 'N/A'}
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
                         {product.stock}

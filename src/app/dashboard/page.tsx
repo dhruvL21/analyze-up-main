@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import {
-  DollarSign,
+  IndianRupee,
   PackageX,
   CreditCard,
   ArrowUpRight,
@@ -40,7 +40,7 @@ function DashboardLoading() {
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Total Inventory Value
             </CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <IndianRupee className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <Skeleton className="h-8 w-1/2" />
@@ -208,12 +208,12 @@ export default function DashboardPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Total Inventory Value
             </CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <IndianRupee className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              $
-              {totalInventoryValue.toLocaleString('en-US', {
+              ₹
+              {totalInventoryValue.toLocaleString('en-IN', {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}
@@ -230,8 +230,8 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              +$
-              {totalSales.toLocaleString('en-US', {
+              +₹
+              {totalSales.toLocaleString('en-IN', {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}

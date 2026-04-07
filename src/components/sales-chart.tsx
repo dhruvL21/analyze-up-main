@@ -32,7 +32,7 @@ export function SalesChart() {
                 Sales
               </span>
               <span className="font-bold text-foreground">
-                ${payload[0].value}
+                ₹{payload[0].value.toLocaleString('en-IN')}
               </span>
             </div>
           </div>
@@ -59,7 +59,7 @@ export function SalesChart() {
           fontSize={12}
           tickLine={false}
           axisLine={false}
-          tickFormatter={(value) => `$${value}`}
+          tickFormatter={(value) => `₹${value}`}
         />
         <Tooltip
           cursor={{ fill: "hsl(var(--accent))", opacity: 0.5 }}

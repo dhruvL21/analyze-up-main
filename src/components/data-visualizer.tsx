@@ -152,7 +152,7 @@ export function DataVisualizer() {
                   Sales
                 </span>
                 <span className="font-bold text-foreground">
-                  ${payload[0].value}
+                  ₹{payload[0].value.toLocaleString('en-IN')}
                 </span>
               </div>
             </div>
@@ -166,7 +166,7 @@ export function DataVisualizer() {
     const commonChildren = [
       <CartesianGrid key="grid" strokeDasharray="3 3" vertical={false} strokeOpacity={0.2} />,
       <XAxis key="xaxis" dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />,
-      <YAxis key="yaxis" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value: number) => `$${value}`} />,
+      <YAxis key="yaxis" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value: number) => `₹${value}`} />,
       <Tooltip key="tooltip" content={<CustomTooltip />} cursor={{ fill: "hsl(var(--accent))", opacity: 0.5 }} />,
       <Legend key="legend" />,
     ];
