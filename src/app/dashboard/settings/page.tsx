@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useData } from "@/context/data-context";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,6 +35,7 @@ import {
 
 export default function SettingsPage() {
     const { toast } = useToast();
+    const { clearAllData } = useData();
 
     const handleUpdateProfile = () => {
         toast({
@@ -49,12 +51,12 @@ export default function SettingsPage() {
         });
     }
 
-    const handleDeleteWorkspace = () => {
-        toast({
-            variant: "destructive",
-            title: "Workspace Deleted",
-            description: "The workspace has been permanently deleted.",
-        });
+    const handleResetWorkspace = async () => {
+        try {
+            await clearAllData();
+        } catch (error) {
+            console.error("Reset failed:", error);
+        }
     }
 
   return (
@@ -129,27 +131,32 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-                <h4 className="font-semibold text-destructive">Delete Workspace</h4>
-                <p className="text-sm text-muted-foreground mt-1">Permanently delete this workspace, including all its data.</p>
+                <h4 className="font-semibold text-destructive">Reset Workspace Data</h4>
+                <p className="text-sm text-muted-foreground mt-1">Permanently delete all products, orders, suppliers, and transactions. Profile settings will remain.</p>
             </div>
              <AlertDialog>
                 <AlertDialogTrigger asChild>
-                    <Button variant="destructive">Delete this workspace</Button>
+                    <Button variant="destructive">Reset All Data</Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
-                  <AlertDialogHeader>
+                <AlertDialogHeader>
                     <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This action cannot be undone. This will permanently delete your
-                      workspace and remove your data from our servers.
+                    This action cannot be undone. This will permanently delete all your
+                    inventory records, sales history, and supplier information.
                     </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDeleteWorkspace}>Continue</AlertDialogAction>
-                  </AlertDialogFooter>
+                    <AlertDialogAction 
+                        onClick={handleResetWorkspace}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                        Reset Data
+                    </AlertDialogAction>
+                </AlertDialogFooter>
                 </AlertDialogContent>
-              </AlertDialog>
+            </AlertDialog>
           </CardContent>
         </Card>
       </div>

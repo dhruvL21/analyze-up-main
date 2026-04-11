@@ -1,6 +1,7 @@
 
 'use client';
 
+import { useMemo } from 'react';
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Bar,
@@ -41,10 +42,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Download } from 'lucide-react';
+import { Download, ChartBar } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { salesData } from '@/lib/data';
+import { useData } from '@/context/data-context';
+import { getMonthlySalesData, getStockByCategoryData } from '@/lib/chart-utils';
 
 type ChartType =
   | 'bar'
@@ -73,9 +75,27 @@ const chartComponents = {
 };
 
 export function DataVisualizer() {
+  const { transactions, products, categories, isLoading } = useData();
   const [chartType, setChartType] = useState<ChartType>('bar');
   const chartRef = useRef<HTMLDivElement>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+
+  const data = useMemo(() => {
+    if (isLoading) return [];
+    
+    // Time-series charts use monthly sales
+    if (['bar', 'line', 'area'].includes(chartType)) {
+      return getMonthlySalesData(transactions, products);
+    }
+    
+    // Pie and Radial charts show Inventory Value (Stock * Price)
+    if (['pie', 'radialBar'].includes(chartType)) {
+        return getInventoryValueData(products, categories);
+    }
+
+    // Radar charts show Stock Level count
+    return getStockByCategoryData(products, categories);
+  }, [transactions, products, categories, chartType, isLoading]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -99,7 +119,7 @@ export function DataVisualizer() {
     items.forEach(el => observer.observe(el));
 
     return () => items.forEach(el => observer.unobserve(el));
-  }, []);
+  }, [data]); // Re-observe when data changes
 
   const handleDownload = useCallback(async () => {
     if (!chartRef.current) return;
@@ -130,29 +150,31 @@ export function DataVisualizer() {
   const renderChart = () => {
     const ChartComponent = chartComponents[chartType];
     const commonProps = {
-        data: salesData,
+        data: data,
     };
 
     const CustomTooltip = ({ active, payload, label }: any) => {
       if (active && payload && payload.length) {
-        const data = payload[0].payload;
+        const item = payload[0].payload;
+        const isCategorical = ['pie', 'radar', 'radialBar'].includes(chartType);
+        
         return (
           <div className="rounded-lg border bg-popover/70 p-2 shadow-sm backdrop-blur-sm text-foreground">
             <div className="grid grid-cols-2 gap-2">
               <div className="flex flex-col space-y-1">
                 <span className="text-[0.70rem] uppercase text-muted-foreground">
-                  Month
+                  {isCategorical ? 'Category' : 'Month'}
                 </span>
                 <span className="font-bold text-foreground">
-                  {label || data.name}
+                  {label || item.name}
                 </span>
               </div>
               <div className="flex flex-col space-y-1">
                 <span className="text-[0.70rem] uppercase text-muted-foreground">
-                  Sales
+                  {isCategorical ? 'Stock' : 'Sales'}
                 </span>
                 <span className="font-bold text-foreground">
-                  ₹{payload[0].value.toLocaleString('en-IN')}
+                  {isCategorical ? payload[0].value.toLocaleString() : `₹${payload[0].value.toLocaleString('en-IN')}`}
                 </span>
               </div>
             </div>
@@ -166,33 +188,44 @@ export function DataVisualizer() {
     const commonChildren = [
       <CartesianGrid key="grid" strokeDasharray="3 3" vertical={false} strokeOpacity={0.2} />,
       <XAxis key="xaxis" dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />,
-      <YAxis key="yaxis" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value: number) => `₹${value}`} />,
+      <YAxis key="yaxis" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value: number) => chartType === 'pie' || chartType === 'radialBar' || chartType === 'radar' ? value.toString() : `₹${value}`} />,
       <Tooltip key="tooltip" content={<CustomTooltip />} cursor={{ fill: "hsl(var(--accent))", opacity: 0.5 }} />,
       <Legend key="legend" />,
     ];
+
+    if (data.length === 0 || (['bar', 'line', 'area'].includes(chartType) && data.every(i => i.sales === 0))) {
+        return (
+          <div className="flex h-full items-center justify-center">
+            <div className="text-center space-y-2">
+              <ChartBar className='h-12 w-12 text-muted-foreground/20 mx-auto' />
+              <p className="text-sm text-muted-foreground">Add products and transactions to see visualization.</p>
+            </div>
+          </div>
+        );
+    }
     
     switch (chartType) {
         case 'pie':
         return (
             <PieChart>
-                <Pie data={salesData} dataKey="sales" nameKey="name" cx="50%" cy="50%" outerRadius={120} label>
-                    {salesData.map((entry, index) => (
+                <Pie data={data} dataKey="sales" nameKey="name" cx="50%" cy="50%" outerRadius={120} label>
+                    {data.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                 </Pie>
-                <Tooltip content={<CustomTooltip />} cursor={{ fill: "hsl(var(--accent))", opacity: 0.5 }} />
+                <Tooltip content={<CustomTooltip />} />
                 <Legend />
             </PieChart>
         );
 
         case 'radar':
             return (
-                <RadarChart cx="50%" cy="50%" outerRadius="80%" data={salesData}>
+                <RadarChart cx="50%" cy="50%" outerRadius="80%" data={data}>
                     <PolarGrid />
                     <PolarAngleAxis dataKey="name" />
                     <PolarRadiusAxis />
-                    <Radar name="Sales" dataKey="sales" stroke="hsl(var(--chart-1))" fill="hsl(var(--chart-1))" fillOpacity={0.6} />
-                    <Tooltip content={<CustomTooltip />} cursor={{ fill: "hsl(var(--accent))", opacity: 0.5 }} />
+                    <Radar name="Stock Level" dataKey="sales" stroke="hsl(var(--chart-1))" fill="hsl(var(--chart-1))" fillOpacity={0.6} />
+                    <Tooltip content={<CustomTooltip />} />
                     <Legend />
                 </RadarChart>
             )
@@ -200,13 +233,11 @@ export function DataVisualizer() {
         case 'radialBar':
             return (
                 <RadialBarChart 
-                    width={500} 
-                    height={300} 
                     cx="50%" 
                     cy="50%" 
                     innerRadius="10%" 
                     outerRadius="80%" 
-                    data={salesData}
+                    data={data}
                     startAngle={180}
                     endAngle={0}
                 >
@@ -216,11 +247,11 @@ export function DataVisualizer() {
                         background
                         dataKey='sales'
                     >
-                     {salesData.map((entry, index) => (
+                     {data.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                     </RadialBar>
-                    <Tooltip content={<CustomTooltip />} cursor={{ fill: "hsl(var(--accent))", opacity: 0.5 }} />
+                    <Tooltip content={<CustomTooltip />} />
                     <Legend iconSize={10} layout='vertical' verticalAlign='middle' align="right" />
                 </RadialBarChart>
             );
@@ -253,14 +284,14 @@ export function DataVisualizer() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center">
-        <h1 className="text-lg font-semibold md:text-2xl">Data Visualizer</h1>
-        <div className="ml-auto flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <h1 className="text-xl font-semibold md:text-2xl">Data Visualizer</h1>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           <Select
             value={chartType}
             onValueChange={(v) => setChartType(v as ChartType)}
           >
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue placeholder="Select chart type" />
             </SelectTrigger>
             <SelectContent>
@@ -272,9 +303,9 @@ export function DataVisualizer() {
               <SelectItem value="radialBar">Radial Bar Chart</SelectItem>
             </SelectContent>
           </Select>
-          <Button size="sm" onClick={handleDownload} disabled={isDownloading}>
+          <Button size="sm" onClick={handleDownload} disabled={isDownloading} className="w-full sm:w-auto">
             <Download className="mr-2 h-4 w-4" />
-            {isDownloading ? 'Downloading...' : 'Download as PDF'}
+            <span className='whitespace-nowrap'>{isDownloading ? 'Downloading...' : 'Download as PDF'}</span>
           </Button>
         </div>
       </div>

@@ -272,8 +272,9 @@ export default function ReportsPage() {
               {`Your best-performing products by revenue ${dateRange === 'all' ? 'of all time' : `in the last ${dateRange} days`}.`}
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <Table>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Product</TableHead>
@@ -296,7 +297,8 @@ export default function ReportsPage() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       </div>

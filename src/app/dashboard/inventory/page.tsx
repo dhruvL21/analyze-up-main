@@ -3,7 +3,7 @@
 
 import Image from 'next/image';
 import React, { useState, useRef, useEffect } from 'react';
-import { PlusCircle, MoreHorizontal } from 'lucide-react';
+import { PlusCircle, MoreHorizontal, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -54,6 +54,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { useData } from '@/context/data-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ImportDialog } from '@/components/import-dialog';
 
 
 export default function InventoryPage() {
@@ -61,6 +62,7 @@ export default function InventoryPage() {
 
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   
   const [description, setDescription] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -212,6 +214,10 @@ export default function InventoryPage() {
         <div className="flex items-center">
           <h1 className="text-2xl font-semibold md:text-3xl">Inventory</h1>
           <div className="ml-auto flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => setIsImportDialogOpen(true)}>
+              <Database className="h-4 w-4" />
+              <span className="sr-only sm:not-sr-only">Import Database</span>
+            </Button>
             <Button size="sm" onClick={openAddDialog}>
               <PlusCircle className="h-4 w-4" />
               <span className="sr-only sm:not-sr-only">Add Product</span>
@@ -225,8 +231,8 @@ export default function InventoryPage() {
               Manage your products and view their inventory levels.
             </CardDescription>
           </CardHeader>
-          <div className="relative">
-             <CardContent className="p-0">
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -349,8 +355,8 @@ export default function InventoryPage() {
                   )))}
                 </TableBody>
               </Table>
-            </CardContent>
-          </div>
+            </div>
+          </CardContent>
         </Card>
       </div>
 
@@ -377,8 +383,8 @@ export default function InventoryPage() {
           onSubmit={handleFormSubmit}
           className="grid gap-4 py-4"
         >
-          <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="name" className="text-right">Name</Label>
+          <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+              <Label htmlFor="name" className="sm:text-right">Name</Label>
               <Input
                 id="name"
                 name="name"
@@ -387,8 +393,8 @@ export default function InventoryPage() {
                 className="col-span-3"
               />
           </div>
-          <div className="grid grid-cols-4 items-start gap-4">
-            <Label htmlFor="description" className="text-right pt-2">Description</Label>
+          <div className="grid grid-cols-1 sm:grid-cols-4 items-start gap-4">
+            <Label htmlFor="description" className="sm:text-right pt-2">Description</Label>
             <Textarea
               id="description"
               name="description"
@@ -398,9 +404,9 @@ export default function InventoryPage() {
               className="col-span-3"
             />
           </div>
-           <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="image" className="text-right">Image</Label>
-                <div className="col-span-3 flex items-center gap-4">
+           <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+                <Label htmlFor="image" className="sm:text-right">Image</Label>
+                <div className="sm:col-span-3 flex items-center gap-4">
                     {imagePreview && (
                     <Image
                         src={imagePreview}
@@ -420,8 +426,8 @@ export default function InventoryPage() {
                     />
                 </div>
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="price" className="text-right">Price</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+                <Label htmlFor="price" className="sm:text-right">Price</Label>
                 <Input
                   id="price"
                   name="price"
@@ -429,22 +435,22 @@ export default function InventoryPage() {
                   step="0.01"
                   defaultValue={editingProduct?.price}
                   required
-                  className="col-span-3"
+                  className="sm:col-span-3"
                 />
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="stock" className="text-right">Stock</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+                <Label htmlFor="stock" className="sm:text-right">Stock</Label>
                 <Input
                   id="stock"
                   name="stock"
                   type="number"
                   defaultValue={editingProduct?.stock}
                   required
-                  className="col-span-3"
+                  className="sm:col-span-3"
                 />
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="categoryId" className="text-right">Category</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+                <Label htmlFor="categoryId" className="sm:text-right">Category</Label>
                 <Select 
                     name="categoryId" 
                     value={selectedCategoryId}
@@ -456,7 +462,7 @@ export default function InventoryPage() {
                     }
                     }}
                 >
-                    <SelectTrigger className="col-span-3">
+                    <SelectTrigger className="sm:col-span-3">
                     <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
@@ -471,8 +477,8 @@ export default function InventoryPage() {
                     </SelectContent>
                 </Select>
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="supplierId" className="text-right">Supplier</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+                <Label htmlFor="supplierId" className="sm:text-right">Supplier</Label>
                 <Select 
                     name="supplierId" 
                     value={selectedSupplierId}
@@ -485,7 +491,7 @@ export default function InventoryPage() {
                     }}
                     defaultValue={editingProduct?.supplierId}
                 >
-                    <SelectTrigger className="col-span-3">
+                    <SelectTrigger className="sm:col-span-3">
                     <SelectValue placeholder="Select supplier" />
                     </SelectTrigger>
                     <SelectContent>
@@ -574,6 +580,8 @@ export default function InventoryPage() {
         </form>
       </DialogContent>
     </Dialog>
+
+    <ImportDialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen} />
     </>
   );
 }

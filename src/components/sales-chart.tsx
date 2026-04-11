@@ -10,9 +10,17 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { salesData } from "@/lib/data";
+import { useData } from "@/context/data-context";
+import { getMonthlySalesData } from "@/lib/chart-utils";
+import { useMemo } from "react";
 
 export function SalesChart() {
+  const { transactions, products, isLoading } = useData();
+
+  const data = useMemo(() => {
+    if (isLoading || !transactions || !products) return [];
+    return getMonthlySalesData(transactions, products);
+  }, [transactions, products, isLoading]);
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -43,9 +51,17 @@ export function SalesChart() {
     return null;
   };
 
+  if (data.every(item => item.sales === 0)) {
+     return (
+       <div className="flex h-[300px] items-center justify-center border-2 border-dashed rounded-xl">
+         <p className="text-sm text-muted-foreground">No sales data recorded yet.</p>
+       </div>
+     );
+  }
+
   return (
     <ResponsiveContainer width="100%" height={300}>
-      <BarChart data={salesData}>
+      <BarChart data={data}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} strokeOpacity={0.2} />
         <XAxis
           dataKey="name"

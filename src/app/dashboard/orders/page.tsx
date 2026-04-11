@@ -141,8 +141,8 @@ export default function OrdersPage() {
               A list of recent purchase orders from your suppliers.
             </CardDescription>
           </CardHeader>
-          <div className="relative">
-            <CardContent>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -234,8 +234,8 @@ export default function OrdersPage() {
                   ))}
                 </TableBody>
               </Table>
-            </CardContent>
-          </div>
+            </div>
+          </CardContent>
         </Card>
       </div>
 
@@ -246,12 +246,12 @@ export default function OrdersPage() {
             <DialogTitle>Create New Order</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="supplierId" className="text-right">
+            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+              <Label htmlFor="supplierId" className="sm:text-right">
                 Supplier
               </Label>
               <Select name="supplierId" required>
-                <SelectTrigger className="col-span-3">
+                <SelectTrigger className="sm:col-span-3">
                   <SelectValue placeholder="Select a supplier" />
                 </SelectTrigger>
                 <SelectContent>
@@ -263,12 +263,12 @@ export default function OrdersPage() {
                 </SelectContent>
               </Select>
             </div>
-             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="productId" className="text-right">
+             <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+              <Label htmlFor="productId" className="sm:text-right">
                 Product
               </Label>
               <Select name="productId" required>
-                <SelectTrigger className="col-span-3">
+                <SelectTrigger className="sm:col-span-3">
                   <SelectValue placeholder="Select a product" />
                 </SelectTrigger>
                 <SelectContent>
@@ -280,8 +280,8 @@ export default function OrdersPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="quantity" className="text-right">
+            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+              <Label htmlFor="quantity" className="sm:text-right">
                 Quantity
               </Label>
               <Input
@@ -289,7 +289,7 @@ export default function OrdersPage() {
                 name="quantity"
                 type="number"
                 step="1"
-                className="col-span-3"
+                className="sm:col-span-3"
                 required
               />
             </div>

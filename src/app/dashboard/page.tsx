@@ -28,6 +28,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { useMemo, useEffect } from 'react';
 import { useData } from '@/context/data-context';
+import { InventoryValueChart } from '@/components/inventory-value-chart';
 import { SalesChart } from '@/components/sales-chart';
 import { AIStockAdvisor } from '@/components/ai-stock-advisor';
 
@@ -100,35 +101,37 @@ function DashboardLoading() {
             An overview of the latest inventory movements.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Product</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Quantity</TableHead>
-                <TableHead className="text-right">Date</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {[...Array(5)].map((_, i) => (
-                <TableRow key={i}>
-                  <TableCell>
-                    <Skeleton className="h-5 w-32" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-5 w-16" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-5 w-8" />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Skeleton className="h-5 w-24 ml-auto" />
-                  </TableCell>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Product</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Quantity</TableHead>
+                  <TableHead className="text-right">Date</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {[...Array(5)].map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell>
+                      <Skeleton className="h-5 w-32" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-5 w-16" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-5 w-8" />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Skeleton className="h-5 w-24 ml-auto" />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -275,18 +278,30 @@ export default function DashboardPage() {
          <AIStockAdvisor />
       </div>
 
-       <div className="grid grid-cols-1 gap-8 scroll-reveal-item">
-         <Card>
-          <CardHeader>
-            <CardTitle>Sales Performance</CardTitle>
-            <CardDescription>
-              A look at your sales performance over the past 12 months.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <SalesChart />
-          </CardContent>
-        </Card>
+       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 scroll-reveal-item">
+          <Card>
+            <CardHeader>
+              <CardTitle>Sales Performance</CardTitle>
+              <CardDescription>
+                Monthly revenue trends.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <SalesChart />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Inventory Distribution</CardTitle>
+              <CardDescription>
+                Value breakdown by category.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <InventoryValueChart />
+            </CardContent>
+          </Card>
       </div>
 
       <Card className="scroll-reveal-item">
@@ -296,8 +311,8 @@ export default function DashboardPage() {
             An overview of the latest inventory movements.
           </CardDescription>
         </CardHeader>
-        <div className="relative">
-          <CardContent>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -340,8 +355,8 @@ export default function DashboardPage() {
                 ))}
               </TableBody>
             </Table>
-          </CardContent>
-        </div>
+          </div>
+        </CardContent>
       </Card>
     </div>
   );

@@ -190,21 +190,21 @@ export default function SuppliersPage() {
             <DialogTitle>Add New Supplier</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="name" className="text-right">
+            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+              <Label htmlFor="name" className="sm:text-right">
                 Name
               </Label>
-              <Input id="name" name="name" className="col-span-3" required />
+              <Input id="name" name="name" className="sm:col-span-3" required />
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="email" className="text-right">
+            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+              <Label htmlFor="email" className="sm:text-right">
                 Contact Email
               </Label>
               <Input
                 id="email"
                 name="email"
                 type="email"
-                className="col-span-3"
+                className="sm:col-span-3"
                 required
               />
             </div>

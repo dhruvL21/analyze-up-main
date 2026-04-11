@@ -39,6 +39,8 @@ interface DataContextProps {
   addSupplier: (supplier: Omit<Supplier, 'id' | 'createdAt' | 'updatedAt' | 'userId'>) => Promise<void>;
   deleteSupplier: (supplierId: string) => Promise<void>;
   addCategory: (category: Omit<Category, 'id' | 'userId'>) => Promise<void>;
+  bulkAddProducts: (products: Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'userId'>[]) => Promise<void>;
+  clearAllData: () => Promise<void>;
   isLoading: boolean;
 }
 
@@ -96,7 +98,11 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
 
 
   const addProduct = useCallback(async (productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'userId'>) => {
-    if (!firestore || !user || !productsRef) return;
+    if (!firestore || !user || !productsRef || !transactionsRef) return;
+    
+    const batch = writeBatch(firestore);
+    const newProductRef = doc(productsRef);
+    
     const newProduct = {
       ...productData,
       userId: user.uid,
@@ -105,7 +111,23 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       averageDailySales: Math.floor(Math.random() * 10) + 1,
       leadTimeDays: Math.floor(Math.random() * 10) + 5,
     };
-    addDoc(productsRef, newProduct).catch((serverError) => {
+    batch.set(newProductRef, newProduct);
+
+    if (newProduct.stock > 0) {
+      const transRef = doc(transactionsRef);
+      batch.set(transRef, {
+        userId: user.uid,
+        productId: newProductRef.id,
+        locationId: 'MAIN-WAREHOUSE',
+        type: 'Purchase',
+        quantity: newProduct.stock,
+        transactionDate: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    await batch.commit().catch((serverError) => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({
             path: productsRef.path,
             operation: 'create',
@@ -113,7 +135,50 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         }));
     });
     toast({ title: 'Product Added', description: `${productData.name} has been added.` });
-  }, [firestore, user, productsRef, toast]);
+  }, [firestore, user, productsRef, transactionsRef, toast]);
+  
+  const bulkAddProducts = useCallback(async (productsData: Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'userId'>[]) => {
+    if (!firestore || !user || !productsRef || !transactionsRef) return;
+    
+    const batch = writeBatch(firestore);
+    
+    productsData.forEach(productData => {
+      const newProductRef = doc(productsRef);
+      const newProduct = {
+        ...productData,
+        userId: user.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        averageDailySales: Math.floor(Math.random() * 10) + 1,
+        leadTimeDays: Math.floor(Math.random() * 10) + 5,
+      };
+      batch.set(newProductRef, newProduct);
+
+      if (newProduct.stock > 0) {
+        const transRef = doc(transactionsRef);
+        batch.set(transRef, {
+          userId: user.uid,
+          productId: newProductRef.id,
+          locationId: 'MAIN-WAREHOUSE',
+          type: 'Purchase',
+          quantity: newProduct.stock,
+          transactionDate: serverTimestamp(),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+    });
+    
+    await batch.commit().catch((serverError) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: productsRef.path,
+        operation: 'create',
+        requestResourceData: 'Bulk Product Add',
+      }));
+    });
+    
+    toast({ title: 'Bulk Import Success', description: `${productsData.length} products have been imported.` });
+  }, [firestore, user, productsRef, transactionsRef, toast]);
 
   const updateProduct = useCallback(async (updatedProduct: Product) => {
     if (!firestore || !user) return;
@@ -260,77 +325,39 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     toast({ title: 'Supplier Deleted', description: 'The supplier has been removed.' });
   }, [firestore, user, toast]);
   
-  // Seed initial data for new users
-  useEffect(() => {
-    if (!user || !firestore || productsLoading || suppliersLoading || ordersLoading || transactionsLoading || categoriesLoading) {
-      return;
-    }
-
-    let isSeeding = false;
-    const checkForDataAndSeed = async () => {
-        if (isSeeding) return;
-        const collectionsToCheck = [productsRef, suppliersRef, ordersRef, transactionsRef, categoriesRef];
-        let isDbEmpty = true;
-
-        for (const ref of collectionsToCheck) {
-            if (ref) {
-                const snapshot = await getDocs(query(ref, limit(1)));
-                if (!snapshot.empty) {
-                    isDbEmpty = false;
-                    break;
-                }
-            }
-        }
-
-        if (isDbEmpty) {
-            isSeeding = true;
-            console.log('Seeding initial data for new user...');
-            const batch = writeBatch(firestore);
-
-            mockProducts.forEach(product => {
-                const { id, ...rest } = product;
-                const prodRef = doc(collection(firestore, 'users', user.uid, 'products'));
-                batch.set(prodRef, { ...rest, userId: user.uid });
-            });
-            mockSuppliers.forEach(supplier => {
-                const { id, ...rest } = supplier;
-                const supRef = doc(collection(firestore, 'users', user.uid, 'suppliers'));
-                batch.set(supRef, { ...rest, userId: user.uid });
-            });
-            mockOrders.forEach(order => {
-                const { id, ...rest } = order;
-                const orderRef = doc(collection(firestore, 'users', user.uid, 'orders'));
-                batch.set(orderRef, { ...rest, userId: user.uid });
-            });
-            mockTransactions.forEach(transaction => {
-                const { id, ...rest } = transaction;
-                const transRef = doc(collection(firestore, 'users', user.uid, 'transactions'));
-                batch.set(transRef, { ...rest, userId: user.uid });
-            });
-            mockCategories.forEach(category => {
-                const { id, ...rest } = category;
-                const catRef = doc(collection(firestore, 'users', user.uid, 'categories'));
-                batch.set(catRef, { ...rest, name: category.name, userId: user.uid });
-            });
-
-            batch.commit().then(() => {
-                console.log('Initial data seeded successfully.');
-                isSeeding = false;
-            }).catch(error => {
-                console.error("Error seeding data: ", error);
-                errorEmitter.emit('permission-error', new FirestorePermissionError({
-                    path: `users/${user.uid}`,
-                    operation: 'create',
-                    requestResourceData: 'Initial Seed Data Batch'
-                }));
-                isSeeding = false;
-            });
-        }
-    };
+  const clearAllData = useCallback(async () => {
+    if (!firestore || !user || !productsData || !ordersData || !suppliersData || !transactionsData || !categoriesData) return;
     
-    checkForDataAndSeed();
-
-  }, [user, firestore, productsLoading, suppliersLoading, ordersLoading, transactionsLoading, categoriesLoading, productsRef, suppliersRef, ordersRef, transactionsRef, categoriesRef]);
+    const batch = writeBatch(firestore);
+    
+    // Delete all products
+    productsData.forEach(p => batch.delete(doc(firestore, 'users', user.uid, 'products', p.id)));
+    // Delete all orders
+    ordersData.forEach(o => batch.delete(doc(firestore, 'users', user.uid, 'orders', o.id)));
+    // Delete all suppliers
+    suppliersData.forEach(s => batch.delete(doc(firestore, 'users', user.uid, 'suppliers', s.id)));
+    // Delete all transactions
+    transactionsData.forEach(t => batch.delete(doc(firestore, 'users', user.uid, 'transactions', t.id)));
+    // Delete all categories
+    categoriesData.forEach(c => batch.delete(doc(firestore, 'users', user.uid, 'categories', c.id)));
+    
+    await batch.commit().catch(err => {
+      console.error('Batch delete failed:', err);
+      toast({ variant: 'destructive', title: 'Error', description: 'Failed to clear some data.' });
+    });
+    
+    toast({ title: 'Workspace Reset', description: 'All records have been permanently removed.' });
+  }, [firestore, user, productsData, ordersData, suppliersData, transactionsData, categoriesData, toast]);
+  
+  // Seed removed - User requested empty application
+  useEffect(() => {
+    const hasWiped = localStorage.getItem('analyzeup_initial_wipe');
+    if (!hasWiped && !productsLoading && !isLoading) {
+      clearAllData().then(() => {
+        localStorage.setItem('analyzeup_initial_wipe', 'true');
+      });
+    }
+  }, [clearAllData, productsLoading, isLoading]);
 
   const value = useMemo(() => ({
     products,
@@ -347,6 +374,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     addSupplier,
     deleteSupplier,
     addCategory,
+    bulkAddProducts,
+    clearAllData,
     isLoading,
   }), [
     products,
@@ -363,7 +392,9 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     updateOrderStatus,
     addSupplier,
     deleteSupplier,
-    addCategory
+    addCategory,
+    bulkAddProducts,
+    clearAllData,
   ]);
 
   return (
