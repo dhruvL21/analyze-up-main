@@ -28,6 +28,7 @@ export interface Product {
   updatedAt: string | FieldValue;
   stock: number;
   price: number;
+  costPrice: number;
   imageUrl: string;
   supplierId: string;
   averageDailySales: number;
@@ -54,11 +55,12 @@ export interface Location {
 }
 
 export interface Transaction {
-  id?: string;
+  id: string;
   productId: string;
   locationId: string;
   type: 'Sale' | 'Purchase';
   quantity: number;
+  price: number; // Historical price at time of transaction
   transactionDate: string | FieldValue;
   createdAt: string | FieldValue;
   updatedAt: string | FieldValue;

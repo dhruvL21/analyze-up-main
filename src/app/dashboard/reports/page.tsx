@@ -1,5 +1,6 @@
-
 'use client';
+
+import { Timestamp } from 'firebase/firestore';
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -75,7 +76,9 @@ export default function ReportsPage() {
     if (dateRange === 'all') return transactions;
     const rangeStartDate = subDays(new Date(), parseInt(dateRange));
     return transactions.filter((t) => {
-      const transactionDate = new Date(t.transactionDate as string);
+      const transactionDate = t.transactionDate instanceof Timestamp 
+        ? t.transactionDate.toDate() 
+        : new Date(t.transactionDate as string);
       return transactionDate >= rangeStartDate;
     });
   };
@@ -86,9 +89,25 @@ export default function ReportsPage() {
     filteredTransactions
       .filter((t) => t.type === 'Sale')
       .reduce((acc, t) => {
-        const product = products.find((p) => p.id === t.productId);
-        return acc + t.quantity * (product?.price || 0);
+        return acc + t.quantity * (t.price || 0);
       }, 0) || 0;
+
+  const totalExpenses =
+    filteredTransactions
+      .filter((t) => t.type === 'Purchase')
+      .reduce((acc, t) => {
+        return acc + t.quantity * (t.price || 0);
+      }, 0) || 0;
+
+  const totalCOGS =
+    filteredTransactions
+      .filter((t) => t.type === 'Sale')
+      .reduce((acc, t) => {
+        const product = products.find((p) => p.id === t.productId);
+        return acc + t.quantity * (product?.costPrice || 0);
+      }, 0) || 0;
+
+  const totalNetProfit = totalRevenue - totalCOGS;
 
   const topSellingProducts = [...products]
     .map(product => {
@@ -104,7 +123,7 @@ export default function ReportsPage() {
 
   const totalProductsInStock =
     products.reduce((acc, p) => acc + p.stock, 0) || 0;
-  const totalOrders = filteredTransactions.filter((t) => t.type === 'Sale').length || 0;
+  const totalSalesCount = filteredTransactions.filter((t) => t.type === 'Sale').length || 0;
 
   const handleDownloadCsv = () => {
     let dataToExport: any[] = [];
@@ -120,6 +139,7 @@ export default function ReportsPage() {
           sku: p.sku,
           stock: p.stock,
           price: p.price.toFixed(2),
+          costPrice: (p.costPrice || 0).toFixed(2),
           inventoryValue: (p.stock * p.price).toFixed(2),
           category: p.categoryId,
         }));
@@ -134,12 +154,15 @@ export default function ReportsPage() {
             const revenue = product ? t.quantity * product.price : 0;
             return {
               transactionId: t.id,
-              transactionDate: t.transactionDate,
+              transactionDate: t.transactionDate instanceof Timestamp 
+                ? t.transactionDate.toDate().toISOString() 
+                : t.transactionDate,
               productId: t.productId,
               productName: product?.name || 'Unknown',
               quantitySold: t.quantity,
-              pricePerUnit: product?.price.toFixed(2) || '0.00',
+              pricePerUnit: (t.price || 0).toFixed(2),
               totalRevenue: revenue.toFixed(2),
+              profit: (revenue - (t.quantity * (product?.costPrice || 0))).toFixed(2),
             };
           });
         filename = `sales_report_${dateRange}days_${new Date().toISOString().split('T')[0]}.csv`;
@@ -150,11 +173,14 @@ export default function ReportsPage() {
            const product = products.find((p) => p.id === t.productId);
             return {
                 transactionId: t.id,
-                transactionDate: t.transactionDate,
+                transactionDate: t.transactionDate instanceof Timestamp 
+                    ? t.transactionDate.toDate().toISOString() 
+                    : t.transactionDate,
                 type: t.type,
                 productId: t.productId,
                 productName: product?.name || 'Unknown',
                 quantity: t.quantity,
+                price: (t.price || 0).toFixed(2),
                 locationId: t.locationId,
             }
         });
@@ -207,6 +233,59 @@ export default function ReportsPage() {
         </div>
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <Card className="scroll-reveal-item bg-primary/5">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Expenses</CardTitle>
+            <IndianRupee className="h-4 w-4 text-destructive" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              ₹
+              {totalExpenses.toLocaleString('en-IN', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Cost of acquisitions
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="scroll-reveal-item border-primary/20 bg-primary/10">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Net Profit</CardTitle>
+            <IndianRupee className="h-4 w-4 text-primary" />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${totalNetProfit >= 0 ? 'text-primary' : 'text-destructive'}`}>
+               {totalNetProfit >= 0 ? '+' : '-'}₹
+              {Math.abs(totalNetProfit).toLocaleString('en-IN', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Sales minus COGS
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="scroll-reveal-item">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              Products in Stock
+            </CardTitle>
+            <Package className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {totalProductsInStock.toLocaleString()}
+            </div>
+            <p className="text-xs text-muted-foreground">Across all products</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
         <Card className="scroll-reveal-item">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
@@ -227,28 +306,14 @@ export default function ReportsPage() {
         </Card>
         <Card className="scroll-reveal-item">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Sales Count</CardTitle>
             <ShoppingCart className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalOrders}</div>
+            <div className="text-2xl font-bold">{totalSalesCount}</div>
             <p className="text-xs text-muted-foreground">
              {dateRange === 'all' ? 'Total sales transactions' : `Sales transactions in the last ${dateRange} days`}
             </p>
-          </CardContent>
-        </Card>
-        <Card className="scroll-reveal-item">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Products in Stock
-            </CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {totalProductsInStock.toLocaleString()}
-            </div>
-            <p className="text-xs text-muted-foreground">Across all products</p>
           </CardContent>
         </Card>
       </div>

@@ -15,6 +15,7 @@ const PRODUCT_FIELDS: (keyof Product)[] = [
   'categoryId',
   'stock',
   'price',
+  'costPrice',
   'imageUrl',
   'supplierId',
 ];

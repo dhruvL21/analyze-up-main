@@ -4,6 +4,8 @@ import { Timestamp } from 'firebase/firestore';
 export interface ChartDataItem {
   name: string;
   sales: number;
+  expenses?: number;
+  profit?: number;
 }
 
 export function getMonthlySalesData(
@@ -13,13 +15,17 @@ export function getMonthlySalesData(
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const currentYear = new Date().getFullYear();
   
-  const monthlyData: { [key: string]: number } = {};
-  months.forEach(m => monthlyData[m] = 0);
+  const monthlySales: { [key: string]: number } = {};
+  const monthlyExpenses: { [key: string]: number } = {};
+  const monthlyProfit: { [key: string]: number } = {};
 
+  months.forEach(m => {
+    monthlySales[m] = 0;
+    monthlyExpenses[m] = 0;
+    monthlyProfit[m] = 0;
+  });
+  
   transactions.forEach(t => {
-    // We only plot Sales for the primary "Sales Performance" chart
-    if (t.type !== 'Sale') return;
-
     let date: Date;
     if (t.transactionDate instanceof Timestamp) {
       date = t.transactionDate.toDate();
@@ -31,15 +37,26 @@ export function getMonthlySalesData(
 
     if (date.getFullYear() === currentYear) {
       const monthName = months[date.getMonth()];
-      const product = products.find(p => p.id === t.productId);
-      const saleAmount = t.quantity * (product?.price || 0);
-      monthlyData[monthName] += saleAmount;
+      const amount = t.quantity * (t.price || 0);
+
+      if (t.type === 'Sale') {
+        monthlySales[monthName] += amount;
+        
+        // Calculate COGS for profit
+        const product = products.find(p => p.id === t.productId);
+        const cogs = t.quantity * (product?.costPrice || 0);
+        monthlyProfit[monthName] += (amount - cogs);
+      } else if (t.type === 'Purchase') {
+        monthlyExpenses[monthName] += amount;
+      }
     }
   });
 
   return months.map(name => ({
     name,
-    sales: monthlyData[name],
+    sales: monthlySales[name],
+    expenses: monthlyExpenses[name],
+    profit: monthlyProfit[name],
   }));
 }
 

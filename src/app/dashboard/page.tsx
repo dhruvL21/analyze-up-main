@@ -1,5 +1,6 @@
-
 'use client';
+
+import { Timestamp } from 'firebase/firestore';
 
 import {
   Card,
@@ -177,9 +178,25 @@ export default function DashboardPage() {
     transactions
       .filter((t) => t.type === 'Sale')
       .reduce((acc, t) => {
-        const product = products.find((p) => p.id === t.productId);
-        return acc + t.quantity * (product?.price || 0);
+        return acc + t.quantity * (t.price || 0);
       }, 0) || 0;
+
+  const totalExpenses =
+    transactions
+      .filter((t) => t.type === 'Purchase')
+      .reduce((acc, t) => {
+        return acc + t.quantity * (t.price || 0);
+      }, 0) || 0;
+
+  const totalCOGS = 
+    transactions
+      .filter((t) => t.type === 'Sale')
+      .reduce((acc, t) => {
+        const product = products.find((p) => p.id === t.productId);
+        return acc + t.quantity * (product?.costPrice || 0);
+      }, 0) || 0;
+
+  const totalProfit = totalSales - totalCOGS;
 
   const topSellingProductMap = useMemo(() => 
     (transactions || [])
@@ -244,7 +261,45 @@ export default function DashboardPage() {
             </p>
           </CardContent>
         </Card>
-        <Card className="scroll-reveal-item">
+        <Card className="scroll-reveal-item bg-primary/5">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Expenses</CardTitle>
+            <ArrowUpRight className="h-4 w-4 text-destructive" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              ₹
+              {totalExpenses.toLocaleString('en-IN', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Total cost of inventory purchased
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="scroll-reveal-item border-primary/50 bg-primary/10">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Net Profit</CardTitle>
+            <ArrowDownRight className="h-4 w-4 text-primary" />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${totalProfit >= 0 ? 'text-primary' : 'text-destructive'}`}>
+              {totalProfit >= 0 ? '+' : '-'}₹
+              {Math.abs(totalProfit).toLocaleString('en-IN', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Revenue minus cost of goods sold
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <Card className="scroll-reveal-item bg-secondary/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Low Stock Items
@@ -258,7 +313,7 @@ export default function DashboardPage() {
             </p>
           </CardContent>
         </Card>
-        <Card className="scroll-reveal-item">
+        <Card className="scroll-reveal-item bg-secondary/10">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Top Selling Product
@@ -349,7 +404,12 @@ export default function DashboardPage() {
                     </TableCell>
                     <TableCell>{transaction.quantity}</TableCell>
                     <TableCell className="text-right">
-                      {new Date(transaction.transactionDate as string).toLocaleDateString()}
+                      {(() => {
+                        const date = transaction.transactionDate instanceof Timestamp 
+                          ? transaction.transactionDate.toDate() 
+                          : new Date(transaction.transactionDate as string);
+                        return date.toLocaleDateString();
+                      })()}
                     </TableCell>
                   </TableRow>
                 ))}

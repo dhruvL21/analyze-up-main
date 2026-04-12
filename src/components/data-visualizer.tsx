@@ -46,7 +46,7 @@ import { Download, ChartBar } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { useData } from '@/context/data-context';
-import { getMonthlySalesData, getStockByCategoryData } from '@/lib/chart-utils';
+import { getMonthlySalesData, getStockByCategoryData, getInventoryValueData } from '@/lib/chart-utils';
 
 type ChartType =
   | 'bar'
@@ -77,6 +77,7 @@ const chartComponents = {
 export function DataVisualizer() {
   const { transactions, products, categories, isLoading } = useData();
   const [chartType, setChartType] = useState<ChartType>('bar');
+  const [metric, setMetric] = useState<'sales' | 'expenses' | 'profit'>('sales');
   const chartRef = useRef<HTMLDivElement>(null);
   const [isDownloading, setIsDownloading] = useState(false);
 
@@ -87,15 +88,14 @@ export function DataVisualizer() {
     if (['bar', 'line', 'area'].includes(chartType)) {
       return getMonthlySalesData(transactions, products);
     }
-    
-    // Pie and Radial charts show Inventory Value (Stock * Price)
-    if (['pie', 'radialBar'].includes(chartType)) {
+    if (metric === 'sales' && chartType === 'pie') {
+        return getStockByCategoryData(products, categories);
+    }
+    if (metric === 'sales' && (chartType === 'radar' || chartType === 'radialBar')) {
         return getInventoryValueData(products, categories);
     }
-
-    // Radar charts show Stock Level count
-    return getStockByCategoryData(products, categories);
-  }, [transactions, products, categories, chartType, isLoading]);
+    return getMonthlySalesData(transactions, products);
+  }, [transactions, products, categories, metric, chartType, isLoading]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -171,7 +171,7 @@ export function DataVisualizer() {
               </div>
               <div className="flex flex-col space-y-1">
                 <span className="text-[0.70rem] uppercase text-muted-foreground">
-                  {isCategorical ? 'Stock' : 'Sales'}
+                  {isCategorical ? 'Stock' : (metric === 'sales' ? 'Revenue' : metric.charAt(0).toUpperCase() + metric.slice(1))}
                 </span>
                 <span className="font-bold text-foreground">
                   {isCategorical ? payload[0].value.toLocaleString() : `₹${payload[0].value.toLocaleString('en-IN')}`}
@@ -193,7 +193,7 @@ export function DataVisualizer() {
       <Legend key="legend" />,
     ];
 
-    if (data.length === 0 || (['bar', 'line', 'area'].includes(chartType) && data.every(i => i.sales === 0))) {
+    if (data.length === 0 || (['bar', 'line', 'area'].includes(chartType) && data.every(i => (i as any)[metric] === 0))) {
         return (
           <div className="flex h-full items-center justify-center">
             <div className="text-center space-y-2">
@@ -208,7 +208,7 @@ export function DataVisualizer() {
         case 'pie':
         return (
             <PieChart>
-                <Pie data={data} dataKey="sales" nameKey="name" cx="50%" cy="50%" outerRadius={120} label>
+                <Pie data={data} dataKey={metric} nameKey="name" cx="50%" cy="50%" outerRadius={120} label>
                     {data.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
@@ -224,7 +224,7 @@ export function DataVisualizer() {
                     <PolarGrid />
                     <PolarAngleAxis dataKey="name" />
                     <PolarRadiusAxis />
-                    <Radar name="Stock Level" dataKey="sales" stroke="hsl(var(--chart-1))" fill="hsl(var(--chart-1))" fillOpacity={0.6} />
+                    <Radar name={metric} dataKey={metric} stroke="hsl(var(--chart-1))" fill="hsl(var(--chart-1))" fillOpacity={0.6} />
                     <Tooltip content={<CustomTooltip />} />
                     <Legend />
                 </RadarChart>
@@ -242,10 +242,9 @@ export function DataVisualizer() {
                     endAngle={0}
                 >
                     <RadialBar
-                        minAngle={15}
                         label={{ position: 'insideStart', fill: '#fff' }}
                         background
-                        dataKey='sales'
+                        dataKey={metric}
                     >
                      {data.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -260,14 +259,14 @@ export function DataVisualizer() {
              return (
                 <LineChart {...commonProps}>
                     {commonChildren}
-                    <Line type="monotone" dataKey="sales" stroke="hsl(var(--primary))" strokeWidth={2} activeDot={{ r: 8 }} />
+                    <Line type="monotone" dataKey={metric} stroke="hsl(var(--primary))" strokeWidth={2} activeDot={{ r: 8 }} />
                 </LineChart>
             );
         case 'area':
              return (
                 <AreaChart {...commonProps}>
                     {commonChildren}
-                    <Area type="monotone" dataKey="sales" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.3} />
+                    <Area type="monotone" dataKey={metric} stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.3} />
                 </AreaChart>
             );
 
@@ -275,7 +274,7 @@ export function DataVisualizer() {
             return (
                 <BarChart {...commonProps}>
                     {commonChildren}
-                    <Bar dataKey="sales" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey={metric} fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
                 </BarChart>
             )
     }
@@ -287,6 +286,19 @@ export function DataVisualizer() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h1 className="text-xl font-semibold md:text-2xl">Data Visualizer</h1>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          <Select
+            value={metric}
+            onValueChange={(v) => setMetric(v as any)}
+          >
+            <SelectTrigger className="w-full sm:w-[150px] border-primary/30 bg-primary/5">
+              <SelectValue placeholder="Select Metric" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="sales">Revenue</SelectItem>
+              <SelectItem value="expenses">Expenses</SelectItem>
+              <SelectItem value="profit">Profit</SelectItem>
+            </SelectContent>
+          </Select>
           <Select
             value={chartType}
             onValueChange={(v) => setChartType(v as ChartType)}

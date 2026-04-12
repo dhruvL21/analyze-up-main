@@ -3,7 +3,7 @@
 
 import Image from 'next/image';
 import React, { useState, useRef, useEffect } from 'react';
-import { PlusCircle, MoreHorizontal, Database } from 'lucide-react';
+import { PlusCircle, MoreHorizontal, Database, Sparkles, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -55,13 +55,17 @@ import { Textarea } from '@/components/ui/textarea';
 import { useData } from '@/context/data-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ImportDialog } from '@/components/import-dialog';
+import { generateProductDescription } from '@/ai/flows/product-descriptor';
+import { useToast } from '@/hooks/use-toast';
 
 
 export default function InventoryPage() {
-  const { products, addProduct, updateProduct, deleteProduct, isLoading, categories, suppliers, addCategory, addSupplier } = useData();
+  const { products, addProduct, updateProduct, deleteProduct, recordSale, isLoading, categories, suppliers, addCategory, addSupplier } = useData();
 
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
+  const [isSellDialogOpen, setIsSellDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [sellingProduct, setSellingProduct] = useState<Product | null>(null);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   
   const [description, setDescription] = useState('');
@@ -72,6 +76,8 @@ export default function InventoryPage() {
   
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(undefined);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | undefined>(undefined);
+  const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
+  const { toast } = useToast();
 
   const productFormRef = useRef<HTMLFormElement>(null);
 
@@ -108,6 +114,7 @@ export default function InventoryPage() {
     setImagePreview(null);
     setSelectedCategoryId(undefined);
     setSelectedSupplierId(undefined);
+    setIsGeneratingDescription(false);
   };
   
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -119,6 +126,46 @@ export default function InventoryPage() {
       };
       reader.readAsDataURL(file);
     }
+  };
+  
+
+  
+  const handleAIDescription = async () => {
+    const productName = productFormRef.current?.querySelector<HTMLInputElement>('input[name="name"]')?.value;
+    if (!productName) {
+      toast({
+        variant: 'destructive',
+        title: 'Missing Name',
+        description: 'Please enter a product name first to generate a description.',
+      });
+      return;
+    }
+
+    setIsGeneratingDescription(true);
+    try {
+      const result = await generateProductDescription(productName);
+      setDescription(result);
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: 'AI Error',
+        description: err.message || 'Failed to generate description.',
+      });
+    } finally {
+      setIsGeneratingDescription(false);
+    }
+  };
+
+  const handleSellSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!sellingProduct) return;
+    
+    const formData = new FormData(e.currentTarget);
+    const quantity = Number(formData.get('quantity'));
+    
+    await recordSale(sellingProduct.id, quantity);
+    setIsSellDialogOpen(false);
+    setSellingProduct(null);
   };
 
   const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -134,6 +181,9 @@ export default function InventoryPage() {
       name: formData.get('name') as string,
       stock: Number(formData.get('stock')),
       price: Number(formData.get('price')),
+      costPrice: Number(formData.get('costPrice')),
+      averageDailySales: 0,
+      leadTimeDays: 7,
       categoryId: selectedCategoryId || formData.get('categoryId') as string,
       supplierId: selectedSupplierId || formData.get('supplierId') as string,
       imageUrl: imageUrl,
@@ -319,6 +369,15 @@ export default function InventoryPage() {
                             >
                               Edit
                             </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={() => {
+                                setSellingProduct(product);
+                                setIsSellDialogOpen(true);
+                              }}
+                              className="text-primary font-medium"
+                            >
+                              Sell
+                            </DropdownMenuItem>
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
                                 <DropdownMenuItem
@@ -365,8 +424,9 @@ export default function InventoryPage() {
         setIsFormDialogOpen(isOpen);
         if (!isOpen) resetFormState();
     }}>
-      <DialogContent className="sm:max-w-xl ios-glass">
-        <DialogHeader>
+      <DialogContent className="w-[95vw] sm:max-w-xl max-h-[90vh] overflow-y-auto ios-glass p-0">
+        <div className="p-6">
+          <DialogHeader>
             <DialogTitle>
                 {editingProduct ? 'Edit Product' : 'Add Product'}
             </DialogTitle>
@@ -384,7 +444,7 @@ export default function InventoryPage() {
           className="grid gap-4 py-4"
         >
           <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-              <Label htmlFor="name" className="sm:text-right">Name</Label>
+              <Label htmlFor="name" className="text-left sm:text-right">Name</Label>
               <Input
                 id="name"
                 name="name"
@@ -394,18 +454,35 @@ export default function InventoryPage() {
               />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-4 items-start gap-4">
-            <Label htmlFor="description" className="sm:text-right pt-2">Description</Label>
+            <div className="flex flex-col sm:items-right">
+              <Label htmlFor="description" className="text-left sm:text-right pt-2">Description</Label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="mt-1 h-8 px-2 text-xs text-primary hover:text-primary/80 flex items-center gap-1 justify-start sm:justify-end"
+                onClick={handleAIDescription}
+                disabled={isGeneratingDescription}
+              >
+                {isGeneratingDescription ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3 w-3" />
+                )}
+                {isGeneratingDescription ? 'Generating...' : 'Magic Desc'}
+              </Button>
+            </div>
             <Textarea
               id="description"
               name="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               required
-              className="col-span-3"
+              className="sm:col-span-3 min-h-[100px]"
             />
           </div>
            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                <Label htmlFor="image" className="sm:text-right">Image</Label>
+                <Label htmlFor="image" className="text-left sm:text-right">Image</Label>
                 <div className="sm:col-span-3 flex items-center gap-4">
                     {imagePreview && (
                     <Image
@@ -427,7 +504,7 @@ export default function InventoryPage() {
                 </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                <Label htmlFor="price" className="sm:text-right">Price</Label>
+                <Label htmlFor="price" className="text-left sm:text-right">Price</Label>
                 <Input
                   id="price"
                   name="price"
@@ -439,7 +516,19 @@ export default function InventoryPage() {
                 />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                <Label htmlFor="stock" className="sm:text-right">Stock</Label>
+                <Label htmlFor="costPrice" className="text-left sm:text-right">Cost Price</Label>
+                <Input
+                  id="costPrice"
+                  name="costPrice"
+                  type="number"
+                  step="0.01"
+                  defaultValue={editingProduct?.costPrice}
+                  required
+                  className="sm:col-span-3"
+                />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+                <Label htmlFor="stock" className="text-left sm:text-right">Stock</Label>
                 <Input
                   id="stock"
                   name="stock"
@@ -450,7 +539,7 @@ export default function InventoryPage() {
                 />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                <Label htmlFor="categoryId" className="sm:text-right">Category</Label>
+                <Label htmlFor="categoryId" className="text-left sm:text-right">Category</Label>
                 <Select 
                     name="categoryId" 
                     value={selectedCategoryId}
@@ -478,7 +567,7 @@ export default function InventoryPage() {
                 </Select>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                <Label htmlFor="supplierId" className="sm:text-right">Supplier</Label>
+                <Label htmlFor="supplierId" className="text-left sm:text-right">Supplier</Label>
                 <Select 
                     name="supplierId" 
                     value={selectedSupplierId}
@@ -515,24 +604,25 @@ export default function InventoryPage() {
             </DialogClose>
             <Button type="submit" form="product-form">Save changes</Button>
         </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
 
     {/* Add Category Dialog */}
     <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
-        <DialogContent className="ios-glass">
+        <DialogContent className="w-[95vw] sm:max-w-md max-h-[90vh] overflow-y-auto ios-glass">
             <DialogHeader>
                 <DialogTitle>Add New Category</DialogTitle>
                 <DialogDescription>Create a new category for your products.</DialogDescription>
             </DialogHeader>
             <form id="category-form" onSubmit={handleCategorySubmit} className="grid gap-4 py-4">
-                 <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="name" className="text-right">Name</Label>
-                    <Input id="name" name="name" className="col-span-3" required />
+                 <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+                    <Label htmlFor="name" className="text-left sm:text-right">Name</Label>
+                    <Input id="name" name="name" className="sm:col-span-3" required />
                 </div>
-                 <div className="grid grid-cols-4 items-start gap-4">
-                    <Label htmlFor="description" className="text-right pt-2">Description</Label>
-                    <Textarea id="description" name="description" className="col-span-3" />
+                 <div className="grid grid-cols-1 sm:grid-cols-4 items-start gap-4">
+                    <Label htmlFor="description" className="text-left sm:text-right pt-2">Description</Label>
+                    <Textarea id="description" name="description" className="sm:col-span-3" />
                 </div>
                 <DialogFooter>
                     <DialogClose asChild>
@@ -546,26 +636,26 @@ export default function InventoryPage() {
 
     {/* Add Supplier Dialog */}
     <Dialog open={isSupplierDialogOpen} onOpenChange={setIsSupplierDialogOpen}>
-      <DialogContent className="ios-glass">
+      <DialogContent className="w-[95vw] sm:max-w-md max-h-[90vh] overflow-y-auto ios-glass">
         <DialogHeader>
           <DialogTitle>Add New Supplier</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSupplierSubmit} className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="supplier-name" className="text-right">
+          <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+            <Label htmlFor="supplier-name" className="text-left sm:text-right">
               Name
             </Label>
-            <Input id="name" name="name" className="col-span-3" required />
+            <Input id="name" name="name" className="sm:col-span-3" required />
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="supplier-email" className="text-right">
+          <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+            <Label htmlFor="supplier-email" className="text-left sm:text-right">
               Contact Email
             </Label>
             <Input
               id="email"
               name="email"
               type="email"
-              className="col-span-3"
+              className="sm:col-span-3"
               required
             />
           </div>
@@ -582,6 +672,41 @@ export default function InventoryPage() {
     </Dialog>
 
     <ImportDialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen} />
+
+    {/* Sell Product Dialog */}
+    <Dialog open={isSellDialogOpen} onOpenChange={setIsSellDialogOpen}>
+        <DialogContent className="sm:max-w-md ios-glass">
+            <DialogHeader>
+            <DialogTitle>Record Sale</DialogTitle>
+            <DialogDescription>
+                Selling <strong>{sellingProduct?.name}</strong>. Current stock: {sellingProduct?.stock}.
+            </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSellSubmit} className="grid gap-4 py-4">
+            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+                <Label htmlFor="quantity" className="text-left sm:text-right">
+                Quantity
+                </Label>
+                <Input
+                id="quantity"
+                name="quantity"
+                type="number"
+                min="1"
+                max={sellingProduct?.stock}
+                defaultValue="1"
+                className="sm:col-span-3"
+                required
+                />
+            </div>
+            <DialogFooter>
+                <Button type="button" variant="ghost" onClick={() => setIsSellDialogOpen(false)}>
+                Cancel
+                </Button>
+                <Button type="submit">Complete Sale</Button>
+            </DialogFooter>
+            </form>
+        </DialogContent>
+    </Dialog>
     </>
   );
 }

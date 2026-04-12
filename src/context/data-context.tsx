@@ -39,6 +39,8 @@ interface DataContextProps {
   addSupplier: (supplier: Omit<Supplier, 'id' | 'createdAt' | 'updatedAt' | 'userId'>) => Promise<void>;
   deleteSupplier: (supplierId: string) => Promise<void>;
   addCategory: (category: Omit<Category, 'id' | 'userId'>) => Promise<void>;
+  addTransaction: (transaction: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>) => Promise<void>;
+  recordSale: (productId: string, quantity: number) => Promise<void>;
   bulkAddProducts: (products: Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'userId'>[]) => Promise<void>;
   clearAllData: () => Promise<void>;
   isLoading: boolean;
@@ -136,6 +138,30 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     });
     toast({ title: 'Product Added', description: `${productData.name} has been added.` });
   }, [firestore, user, productsRef, transactionsRef, toast]);
+
+  const addTransaction = useCallback(async (transactionData: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>) => {
+    if (!firestore || !user || !transactionsRef) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not add transaction.' });
+      throw new Error("Not authenticated");
+    }
+
+    const newTransaction = {
+      ...transactionData,
+      tenantId: user.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    try {
+      await addDoc(transactionsRef, newTransaction);
+    } catch (serverError: any) {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: transactionsRef.path,
+        operation: 'create',
+        requestResourceData: newTransaction,
+      }));
+    }
+  }, [firestore, user, transactionsRef, toast]);
   
   const bulkAddProducts = useCallback(async (productsData: Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'userId'>[]) => {
     if (!firestore || !user || !productsRef || !transactionsRef) return;
@@ -222,29 +248,16 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     };
     batch.set(newOrderRef, newOrder);
 
-    const newTransactionRef = doc(transactionsRef);
-    const newTransaction = {
-        userId: user.uid,
-        productId: newOrder.productId,
-        locationId: 'MAIN-WAREHOUSE',
-        type: 'Purchase' as const,
-        quantity: newOrder.quantity,
-        transactionDate: newOrder.orderDate,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-    };
-    batch.set(newTransactionRef, newTransaction);
-    
     batch.commit().catch((serverError) => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({
-            path: 'batch-write', // Or be more specific if possible
+            path: 'batch-write',
             operation: 'create',
-            requestResourceData: { order: newOrder, transaction: newTransaction },
+            requestResourceData: { order: newOrder },
         }));
     });
-    const supplierName = suppliers.find(s => s.id === newOrder.supplierId)?.name || 'the supplier';
-    toast({ title: 'Order Created', description: `New purchase order for ${supplierName} has been created.` });
-  }, [firestore, user, ordersRef, transactionsRef, suppliers, toast]);
+    const supplierName = suppliers.find(s => s.id === newOrder.supplierId)?.name || 'the customer';
+    toast({ title: 'Order Created', description: `New order for ${supplierName} has been recorded.` });
+  }, [firestore, user, ordersRef, suppliers, toast]);
 
   const deleteOrder = useCallback(async (orderId: string) => {
     if (!firestore || !user) return;
@@ -259,7 +272,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   }, [firestore, user, toast]);
 
   const updateOrderStatus = useCallback(async (orderId: string, status: string) => {
-    if (!firestore || !user) return;
+    if (!firestore || !user || !transactionsRef) return;
     const orderRef = doc(firestore, 'users', user.uid, 'orders', orderId);
     const orderToUpdate = orders.find(o => o.id === orderId);
     if (!orderToUpdate) return;
@@ -272,9 +285,28 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         const productRef = doc(firestore, 'users', user.uid, 'products', orderToUpdate.productId);
         const product = products.find(p => p.id === orderToUpdate.productId);
         if (product) {
-            batch.update(productRef, { stock: product.stock + orderToUpdate.quantity });
+            // Decrement stock for a sale
+            batch.update(productRef, { 
+                stock: Math.max(0, product.stock - orderToUpdate.quantity),
+                updatedAt: serverTimestamp()
+            });
+
+            // Record a Sale Transaction
+            const transactionRef = doc(transactionsRef);
+            batch.set(transactionRef, {
+                id: transactionRef.id,
+                tenantId: user.uid,
+                productId: product.id,
+                locationId: 'MAIN-WAREHOUSE',
+                type: 'Sale',
+                quantity: orderToUpdate.quantity,
+                price: product.price,
+                transactionDate: serverTimestamp(),
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            });
+            toast({ title: 'Order Fulfilled', description: `Order ${orderId.substring(0,8)}... has been marked as fulfilled.` });
         }
-        toast({ title: 'Order Fulfilled', description: `Order ${orderId.substring(0,8)}... marked as fulfilled and stock updated.` });
     } else {
         toast({ title: 'Order Status Updated', description: `Order ${orderId.substring(0,8)}... has been marked as ${status}.` });
     }
@@ -285,7 +317,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
             operation: 'update',
         }));
     });
-  }, [firestore, user, orders, products, toast]);
+  }, [firestore, user, orders, products, transactionsRef, toast]);
 
   const addSupplier = useCallback(async (supplierData: Omit<Supplier, 'id' | 'createdAt' | 'updatedAt' | 'userId'>) => {
      if (!firestore || !user || !suppliersRef) return;
@@ -313,6 +345,45 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     toast({ title: 'Supplier Added', description: `${supplierData.name} has been added.` });
   }, [firestore, user, suppliers, suppliersRef, toast]);
 
+  const recordSale = useCallback(async (productId: string, quantity: number) => {
+    if (!firestore || !user || !transactionsRef) return;
+    
+    const product = products.find(p => p.id === productId);
+    if (!product || product.stock < quantity) {
+        toast({ variant: 'destructive', title: 'Error', description: 'Insufficient stock or product not found.' });
+        return;
+    }
+
+    const batch = writeBatch(firestore);
+    const productRef = doc(firestore, 'users', user.uid, 'products', productId);
+    const transactionRef = doc(transactionsRef);
+
+    batch.update(productRef, { 
+      stock: product.stock - quantity,
+      updatedAt: serverTimestamp() 
+    });
+
+    batch.set(transactionRef, {
+      id: transactionRef.id,
+      tenantId: user.uid,
+      productId,
+      locationId: 'MAIN-WAREHOUSE',
+      type: 'Sale',
+      quantity,
+      price: product.price, // Record current price for historical accuracy
+      transactionDate: new Date().toISOString(),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    await batch.commit().catch(err => {
+        console.error('Sale recording failed:', err);
+        toast({ variant: 'destructive', title: 'Error', description: 'Failed to record sale.' });
+    });
+
+    toast({ title: 'Sale Recorded', description: `Sold ${quantity} units of ${product.name}.` });
+  }, [firestore, user, transactionsRef, products, toast]);
+
   const deleteSupplier = useCallback(async (supplierId: string) => {
     if (!firestore || !user) return;
     const supplierRef = doc(firestore, 'users', user.uid, 'suppliers', supplierId);
@@ -328,18 +399,19 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const clearAllData = useCallback(async () => {
     if (!firestore || !user || !productsData || !ordersData || !suppliersData || !transactionsData || !categoriesData) return;
     
+    const uid = user.uid;
     const batch = writeBatch(firestore);
     
     // Delete all products
-    productsData.forEach(p => batch.delete(doc(firestore, 'users', user.uid, 'products', p.id)));
+    productsData.forEach(p => batch.delete(doc(firestore, 'users', uid, 'products', p.id)));
     // Delete all orders
-    ordersData.forEach(o => batch.delete(doc(firestore, 'users', user.uid, 'orders', o.id)));
+    ordersData.forEach(o => batch.delete(doc(firestore, 'users', uid, 'orders', o.id)));
     // Delete all suppliers
-    suppliersData.forEach(s => batch.delete(doc(firestore, 'users', user.uid, 'suppliers', s.id)));
+    suppliersData.forEach(s => batch.delete(doc(firestore, 'users', uid, 'suppliers', s.id)));
     // Delete all transactions
-    transactionsData.forEach(t => batch.delete(doc(firestore, 'users', user.uid, 'transactions', t.id)));
+    transactionsData.forEach(t => batch.delete(doc(firestore, 'users', uid, 'transactions', t.id)));
     // Delete all categories
-    categoriesData.forEach(c => batch.delete(doc(firestore, 'users', user.uid, 'categories', c.id)));
+    categoriesData.forEach(c => batch.delete(doc(firestore, 'users', uid, 'categories', c.id)));
     
     await batch.commit().catch(err => {
       console.error('Batch delete failed:', err);
@@ -351,13 +423,15 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   
   // Seed removed - User requested empty application
   useEffect(() => {
-    const hasWiped = localStorage.getItem('analyzeup_initial_wipe');
+    if (!user) return;
+    const wipeKey = `analyzeup_initial_wipe_${user.uid}`;
+    const hasWiped = localStorage.getItem(wipeKey);
     if (!hasWiped && !productsLoading && !isLoading) {
       clearAllData().then(() => {
-        localStorage.setItem('analyzeup_initial_wipe', 'true');
+        localStorage.setItem(wipeKey, 'true');
       });
     }
-  }, [clearAllData, productsLoading, isLoading]);
+  }, [user, clearAllData, productsLoading, isLoading]);
 
   const value = useMemo(() => ({
     products,
@@ -374,6 +448,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     addSupplier,
     deleteSupplier,
     addCategory,
+    addTransaction,
+    recordSale,
     bulkAddProducts,
     clearAllData,
     isLoading,
@@ -393,6 +469,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     addSupplier,
     deleteSupplier,
     addCategory,
+    addTransaction,
+    recordSale,
     bulkAddProducts,
     clearAllData,
   ]);

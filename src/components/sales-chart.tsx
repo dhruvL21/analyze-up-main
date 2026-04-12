@@ -37,10 +37,18 @@ export function SalesChart() {
             </div>
             <div className="flex flex-col space-y-1">
               <span className="text-[0.70rem] uppercase text-muted-foreground">
-                Sales
+                Revenue
               </span>
-              <span className="font-bold text-foreground">
+              <span className="font-bold text-primary">
                 ₹{payload[0].value.toLocaleString('en-IN')}
+              </span>
+            </div>
+            <div className="flex flex-col space-y-1">
+              <span className="text-[0.70rem] uppercase text-muted-foreground">
+                Expenses
+              </span>
+              <span className="font-bold text-destructive">
+                ₹{payload[1]?.value.toLocaleString('en-IN') || 0}
               </span>
             </div>
           </div>
@@ -51,10 +59,10 @@ export function SalesChart() {
     return null;
   };
 
-  if (data.every(item => item.sales === 0)) {
+  if (data.every(item => item.sales === 0 && item.expenses === 0)) {
      return (
        <div className="flex h-[300px] items-center justify-center border-2 border-dashed rounded-xl">
-         <p className="text-sm text-muted-foreground">No sales data recorded yet.</p>
+         <p className="text-sm text-muted-foreground">No financial data recorded yet.</p>
        </div>
      );
   }
@@ -83,8 +91,16 @@ export function SalesChart() {
         />
         <Bar
           dataKey="sales"
+          name="Revenue"
           fill="hsl(var(--primary))"
           radius={[4, 4, 0, 0]}
+        />
+        <Bar
+          dataKey="expenses"
+          name="Expenses"
+          fill="hsl(var(--destructive))"
+          radius={[4, 4, 0, 0]}
+          opacity={0.8}
         />
       </BarChart>
     </ResponsiveContainer>
