@@ -6,9 +6,9 @@ import { Product } from '@/lib/types';
 
 const MappingSchema = z.record(z.string(), z.string());
 
-export type FieldMapping = Record<string, keyof Product | 'skip'>;
+export type FieldMapping = Record<string, string>;
 
-const PRODUCT_FIELDS: (keyof Product)[] = [
+const PRODUCT_FIELDS_LIST = [
   'name',
   'description',
   'sku',
@@ -20,14 +20,35 @@ const PRODUCT_FIELDS: (keyof Product)[] = [
   'supplierId',
 ];
 
+const TRANSACTION_FIELDS_LIST = [
+  'transactionId',
+  'transactionDate',
+  'productName',
+  'sku',
+  'category',
+  'type',
+  'quantity',
+  'price',
+  'totalRevenue',
+  'costPerUnit',
+  'totalCost',
+  'supplier',
+  'customerName',
+  'paymentMethod',
+  'status',
+];
+
 export async function getSmartMapping(
-  externalHeaders: string[]
+  externalHeaders: string[],
+  importType: 'products' | 'sales' = 'products'
 ): Promise<FieldMapping> {
+  const targetFields = importType === 'products' ? PRODUCT_FIELDS_LIST : TRANSACTION_FIELDS_LIST;
+  
   const prompt = `
-You are an AI data assistant. Your task is to map columns from an external "brand" database to our "AnalyzeUp" Inventory schema.
+You are an AI data assistant. Your task is to map columns from an external "brand" database to our "AnalyzeUp" ${importType === 'products' ? 'Inventory' : 'Transaction'} schema.
 
 AVAILABLE TARGET FIELDS:
-${PRODUCT_FIELDS.join(', ')}
+${targetFields.join(', ')}
 
 EXTERNAL COLUMNS:
 ${externalHeaders.join(', ')}
@@ -67,8 +88,8 @@ Respond ONLY with the JSON object.
     const mapping: FieldMapping = {};
     externalHeaders.forEach(header => {
       const match = rawMapping[header];
-      if (match && (PRODUCT_FIELDS.includes(match as any) || match === 'skip')) {
-        mapping[header] = match as any;
+      if (match && (targetFields.includes(match) || match === 'skip')) {
+        mapping[header] = match;
       } else {
         mapping[header] = 'skip';
       }
@@ -79,12 +100,12 @@ Respond ONLY with the JSON object.
     console.error('Error in getSmartMapping:', error);
     // Fallback to basic mapping if AI fails
     const fallback: FieldMapping = {};
-    const normalizedTarget = PRODUCT_FIELDS.map(f => f.toLowerCase());
+    const normalizedTarget = targetFields.map(f => f.toLowerCase());
     
     externalHeaders.forEach(header => {
       const hLower = header.toLowerCase();
       const matchIdx = normalizedTarget.findIndex(t => hLower.includes(t) || t.includes(hLower));
-      fallback[header] = matchIdx !== -1 ? PRODUCT_FIELDS[matchIdx] : 'skip';
+      fallback[header] = matchIdx !== -1 ? targetFields[matchIdx] : 'skip';
     });
     return fallback;
   }

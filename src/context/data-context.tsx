@@ -42,6 +42,7 @@ interface DataContextProps {
   addTransaction: (transaction: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>) => Promise<void>;
   recordSale: (productId: string, quantity: number) => Promise<void>;
   bulkAddProducts: (products: Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'userId'>[]) => Promise<void>;
+  bulkAddTransactions: (transactions: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>[]) => Promise<void>;
   clearAllData: () => Promise<void>;
   isLoading: boolean;
 }
@@ -53,6 +54,18 @@ const uniqueBy = <T extends Record<string, any>>(array: T[] | null, key: keyof T
   if (!array) return [];
   return Array.from(new Map(array.map(item => [item[key], item])).values());
 }
+
+
+// Helper function to remove undefined values from an object for Firestore compatibility
+const cleanObject = (obj: any) => {
+  const result: any = {};
+  Object.keys(obj).forEach((key) => {
+    if (obj[key] !== undefined) {
+      result[key] = obj[key];
+    }
+  });
+  return result;
+};
 
 
 export const DataProvider = ({ children }: { children: ReactNode }) => {
@@ -145,12 +158,12 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       throw new Error("Not authenticated");
     }
 
-    const newTransaction = {
+    const newTransaction = cleanObject({
       ...transactionData,
       tenantId: user.uid,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-    };
+    });
 
     try {
       await addDoc(transactionsRef, newTransaction);
@@ -206,6 +219,51 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     toast({ title: 'Bulk Import Success', description: `${productsData.length} products have been imported.` });
   }, [firestore, user, productsRef, transactionsRef, toast]);
 
+  const bulkUpdateProducts = useCallback(async (updates: (Partial<Product> & { id: string })[]) => {
+    if (!firestore || !user || !productsRef) return;
+    
+    const batch = writeBatch(firestore);
+    
+    updates.forEach(update => {
+      const productRef = doc(productsRef, update.id);
+      batch.update(productRef, {
+        ...update,
+        updatedAt: serverTimestamp(),
+      });
+    });
+    
+    await batch.commit().catch((serverError) => {
+      console.error("Bulk update failed:", serverError);
+    });
+  }, [firestore, user, productsRef]);
+
+  const bulkAddTransactions = useCallback(async (transactionsData: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>[]) => {
+    if (!firestore || !user || !transactionsRef) return;
+    
+    const batch = writeBatch(firestore);
+    
+    transactionsData.forEach(transactionData => {
+      const newTransactionRef = doc(transactionsRef);
+      const newTransaction = cleanObject({
+        ...transactionData,
+        tenantId: user.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      batch.set(newTransactionRef, newTransaction);
+    });
+    
+    await batch.commit().catch((serverError) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: transactionsRef.path,
+        operation: 'create',
+        requestResourceData: 'Bulk Transaction Add',
+      }));
+    });
+    
+    toast({ title: 'Transactions Imported', description: `${transactionsData.length} records have been added.` });
+  }, [firestore, user, transactionsRef, toast]);
+
   const updateProduct = useCallback(async (updatedProduct: Product) => {
     if (!firestore || !user) return;
     const productRef = doc(firestore, 'users', user.uid, 'products', updatedProduct.id);
@@ -239,16 +297,45 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     const batch = writeBatch(firestore);
     
     const newOrderRef = doc(ordersRef);
-    const newOrder = {
+    const newOrder = cleanObject({
         ...orderData,
         id: newOrderRef.id,
         userId: user.uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-    };
+    });
     batch.set(newOrderRef, newOrder);
 
-    batch.commit().catch((serverError) => {
+    // If order is created as Fulfilled, handle stock reduction immediately
+    if (orderData.status === 'Fulfilled') {
+        const productRef = doc(firestore, 'users', user.uid, 'products', orderData.productId);
+        const product = products.find(p => p.id === orderData.productId);
+        if (product) {
+            batch.update(productRef, { 
+                stock: Math.max(0, product.stock - orderData.quantity),
+                updatedAt: serverTimestamp()
+            });
+
+            const transactionRef = doc(transactionsRef);
+            batch.set(transactionRef, cleanObject({
+                id: transactionRef.id,
+                tenantId: user.uid,
+                productId: product.id,
+                productName: product.name,
+                sku: product.sku,
+                category: product.categoryId,
+                locationId: 'MAIN-WAREHOUSE',
+                type: 'Sale',
+                quantity: orderData.quantity,
+                price: product.price,
+                transactionDate: serverTimestamp(),
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            }));
+        }
+    }
+
+    await batch.commit().catch((serverError) => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({
             path: 'batch-write',
             operation: 'create',
@@ -293,10 +380,13 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
 
             // Record a Sale Transaction
             const transactionRef = doc(transactionsRef);
-            batch.set(transactionRef, {
+            batch.set(transactionRef, cleanObject({
                 id: transactionRef.id,
                 tenantId: user.uid,
                 productId: product.id,
+                productName: product.name,
+                sku: product.sku,
+                category: product.categoryId,
                 locationId: 'MAIN-WAREHOUSE',
                 type: 'Sale',
                 quantity: orderToUpdate.quantity,
@@ -304,7 +394,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
                 transactionDate: serverTimestamp(),
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
-            });
+            }));
             toast({ title: 'Order Fulfilled', description: `Order ${orderId.substring(0,8)}... has been marked as fulfilled.` });
         }
     } else {
@@ -451,6 +541,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     addTransaction,
     recordSale,
     bulkAddProducts,
+    bulkUpdateProducts,
+    bulkAddTransactions,
     clearAllData,
     isLoading,
   }), [
@@ -472,6 +564,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     addTransaction,
     recordSale,
     bulkAddProducts,
+    bulkUpdateProducts,
+    bulkAddTransactions,
     clearAllData,
   ]);
 

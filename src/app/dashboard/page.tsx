@@ -178,21 +178,23 @@ export default function DashboardPage() {
     transactions
       .filter((t) => t.type === 'Sale')
       .reduce((acc, t) => {
-        return acc + t.quantity * (t.price || 0);
+        return acc + (t.totalRevenue || (t.quantity * (t.price || 0)));
       }, 0) || 0;
 
   const totalExpenses =
     transactions
       .filter((t) => t.type === 'Purchase')
       .reduce((acc, t) => {
-        return acc + t.quantity * (t.price || 0);
+        return acc + (t.totalCost || t.totalRevenue || (t.quantity * (t.price || 0)));
       }, 0) || 0;
 
   const totalCOGS = 
     transactions
       .filter((t) => t.type === 'Sale')
       .reduce((acc, t) => {
-        const product = products.find((p) => p.id === t.productId);
+        if (t.totalCost !== undefined) return acc + t.totalCost;
+        if (t.costPerUnit !== undefined) return acc + (t.quantity * t.costPerUnit);
+        const product = products.find((p) => p.id === t.productId || p.sku === t.sku);
         return acc + t.quantity * (product?.costPrice || 0);
       }, 0) || 0;
 
@@ -203,7 +205,7 @@ export default function DashboardPage() {
       .filter((t) => t.type === 'Sale')
       .reduce((acc, t) => {
         const productName =
-          products.find((p) => p.id === t.productId)?.name || 'Unknown';
+          t.productName || products.find((p) => p.id === t.productId || p.sku === t.sku)?.name || 'Unknown';
         acc[productName] = (acc[productName] || 0) + t.quantity;
         return acc;
       }, {} as { [key: string]: number })
@@ -381,7 +383,7 @@ export default function DashboardPage() {
                 {recentTransactions.map((transaction) => (
                   <TableRow key={transaction.id}>
                     <TableCell className="font-medium">
-                      {products.find(p => p.id === transaction.productId)?.name || 'Unknown Product'}
+                      {transaction.productName || products.find(p => p.id === transaction.productId)?.name || 'Unknown Product'}
                     </TableCell>
                     <TableCell>
                       <Badge

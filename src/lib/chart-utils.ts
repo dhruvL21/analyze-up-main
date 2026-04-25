@@ -13,7 +13,23 @@ export function getMonthlySalesData(
   products: Product[]
 ): ChartDataItem[] {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const currentYear = new Date().getFullYear();
+  
+  let currentYear = new Date().getFullYear();
+  if (transactions && transactions.length > 0) {
+    let latestTime = 0;
+    transactions.forEach(t => {
+        let d: number;
+        if (t.transactionDate instanceof Timestamp) {
+            d = t.transactionDate.toMillis();
+        } else if (typeof t.transactionDate === 'string') {
+            d = new Date(t.transactionDate).getTime();
+        } else return;
+        if (!isNaN(d) && d > latestTime) latestTime = d;
+    });
+    if (latestTime > 0) {
+        currentYear = new Date(latestTime).getFullYear();
+    }
+  }
   
   const monthlySales: { [key: string]: number } = {};
   const monthlyExpenses: { [key: string]: number } = {};
@@ -37,26 +53,35 @@ export function getMonthlySalesData(
 
     if (date.getFullYear() === currentYear) {
       const monthName = months[date.getMonth()];
-      const amount = t.quantity * (t.price || 0);
+      
+      // Calculate revenue
+      const revenue = t.totalRevenue || (t.quantity * (t.price || 0));
+      
+      // Calculate cost
+      let cost = 0;
+      if (t.totalCost !== undefined) {
+        cost = t.totalCost;
+      } else if (t.costPerUnit !== undefined) {
+        cost = t.quantity * t.costPerUnit;
+      } else {
+        const product = products.find(p => p.id === t.productId || p.sku === t.sku);
+        cost = t.quantity * (product?.costPrice || 0);
+      }
 
       if (t.type === 'Sale') {
-        monthlySales[monthName] += amount;
-        
-        // Calculate COGS for profit
-        const product = products.find(p => p.id === t.productId);
-        const cogs = t.quantity * (product?.costPrice || 0);
-        monthlyProfit[monthName] += (amount - cogs);
+        monthlySales[monthName] += revenue;
+        monthlyProfit[monthName] += (revenue - cost);
       } else if (t.type === 'Purchase') {
-        monthlyExpenses[monthName] += amount;
+        monthlyExpenses[monthName] += (t.totalCost || revenue);
       }
     }
   });
 
   return months.map(name => ({
     name,
-    sales: monthlySales[name],
-    expenses: monthlyExpenses[name],
-    profit: monthlyProfit[name],
+    sales: Math.round(monthlySales[name]),
+    expenses: Math.round(monthlyExpenses[name]),
+    profit: Math.round(monthlyProfit[name]),
   }));
 }
 

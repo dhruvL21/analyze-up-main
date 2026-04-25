@@ -74,7 +74,19 @@ export default function ReportsPage() {
 
   const getFilteredTransactions = () => {
     if (dateRange === 'all') return transactions;
-    const rangeStartDate = subDays(new Date(), parseInt(dateRange));
+    
+    // Find the date of the most recent transaction to anchor our date range
+    let latestTime = 0;
+    transactions.forEach(t => {
+      const d = t.transactionDate instanceof Timestamp 
+        ? t.transactionDate.toMillis() 
+        : new Date(t.transactionDate as string).getTime();
+      if (!isNaN(d) && d > latestTime) latestTime = d;
+    });
+    
+    const referenceDate = latestTime > 0 ? new Date(latestTime) : new Date();
+    const rangeStartDate = subDays(referenceDate, parseInt(dateRange));
+    
     return transactions.filter((t) => {
       const transactionDate = t.transactionDate instanceof Timestamp 
         ? t.transactionDate.toDate() 
@@ -89,21 +101,23 @@ export default function ReportsPage() {
     filteredTransactions
       .filter((t) => t.type === 'Sale')
       .reduce((acc, t) => {
-        return acc + t.quantity * (t.price || 0);
+        return acc + (t.totalRevenue || (t.quantity * (t.price || 0)));
       }, 0) || 0;
 
   const totalExpenses =
     filteredTransactions
       .filter((t) => t.type === 'Purchase')
       .reduce((acc, t) => {
-        return acc + t.quantity * (t.price || 0);
+        return acc + (t.totalCost || t.totalRevenue || (t.quantity * (t.price || 0)));
       }, 0) || 0;
 
   const totalCOGS =
     filteredTransactions
       .filter((t) => t.type === 'Sale')
       .reduce((acc, t) => {
-        const product = products.find((p) => p.id === t.productId);
+        if (t.totalCost !== undefined) return acc + t.totalCost;
+        if (t.costPerUnit !== undefined) return acc + (t.quantity * t.costPerUnit);
+        const product = products.find((p) => p.id === t.productId || p.sku === t.sku);
         return acc + t.quantity * (product?.costPrice || 0);
       }, 0) || 0;
 

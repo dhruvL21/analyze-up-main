@@ -44,15 +44,25 @@ const PRODUCT_FIELDS: { label: string; value: string }[] = [
 ];
 
 const TRANSACTION_FIELDS: { label: string; value: string }[] = [
-    { label: 'Product SKU', value: 'productSku' },
-    { label: 'Quantity', value: 'quantity' },
+    { label: 'Transaction ID', value: 'transactionId' },
+    { label: 'Date', value: 'transactionDate' },
+    { label: 'Product Name', value: 'productName' },
+    { label: 'SKU', value: 'sku' },
+    { label: 'Category', value: 'category' },
+    { label: 'Quantity Sold/Purchased', value: 'quantity' },
     { label: 'Unit Price', value: 'price' },
-    { label: 'Date (MM/DD/YYYY)', value: 'transactionDate' },
+    { label: 'Total Revenue', value: 'totalRevenue' },
+    { label: 'Cost Per Unit', value: 'costPerUnit' },
+    { label: 'Total Cost', value: 'totalCost' },
+    { label: 'Supplier', value: 'supplier' },
+    { label: 'Customer Name', value: 'customerName' },
+    { label: 'Payment Method', value: 'paymentMethod' },
+    { label: 'Status', value: 'status' },
     { label: 'Type (Sale/Purchase)', value: 'type' },
 ];
 
 export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
-  const { bulkAddProducts, addTransaction, products, suppliers, categories } = useData();
+  const { bulkAddProducts, bulkUpdateProducts, bulkAddTransactions, products, suppliers, categories } = useData();
   const [importType, setImportType] = useState<'products' | 'sales'>('products');
   const [file, setFile] = useState<File | null>(null);
   const [parsing, setParsing] = useState(false);
@@ -80,7 +90,7 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
         setRawData(results.data);
         
         // Get smart mapping from AI
-        const aiMapping = await getSmartMapping(headers);
+        const aiMapping = await getSmartMapping(headers, importType);
         setMapping(aiMapping);
         setStep('map');
         setParsing(false);
@@ -126,26 +136,88 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
         await bulkAddProducts(productsToImport);
       } else {
         // Import Sales/Transactions
-        for (const row of rawData) {
+        const missingProductsMap = new Map<string, Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'userId'>>();
+        const existingProductsUpdatesMap = new Map<string, Partial<Product> & { id: string }>();
+        
+        const transactionsToImport: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>[] = rawData.map((row) => {
             const trn: any = {};
+            
+            // Map from mapping
             Object.entries(mapping).forEach(([externalKey, targetKey]) => {
                 if (targetKey !== 'skip') {
-                    trn[targetKey] = row[externalKey];
+                    let value = row[externalKey];
+                    // Numerical fields
+                    if (['quantity', 'price', 'totalRevenue', 'costPerUnit', 'totalCost'].includes(targetKey)) {
+                        value = parseFloat(value) || 0;
+                    }
+                    trn[targetKey] = value;
                 }
             });
 
-            const product = products.find(p => p.sku === trn.productSku);
-            if (!product) continue;
+            // Find existing product or prepare to create a new one
+            let product = products.find(p => (trn.sku && p.sku === trn.sku) || (trn.productName && p.name === trn.productName));
+            
+            if (!product && (trn.sku || trn.productName)) {
+                const key = trn.sku || trn.productName;
+                if (!missingProductsMap.has(key)) {
+                    missingProductsMap.set(key, {
+                        name: trn.productName || trn.sku || 'Imported Product',
+                        sku: trn.sku || `SKU-${Math.random().toString(36).substring(7).toUpperCase()}`,
+                        price: trn.price || 0,
+                        costPrice: trn.costPerUnit || (trn.price ? trn.price * 0.6 : 0),
+                        stock: Number(trn.quantity) ? Number(trn.quantity) + 20 : 100, // Set initial stock so inventory is not empty
+                        categoryId: trn.category || categories[0]?.id || 'imported',
+                        supplierId: trn.supplier || suppliers[0]?.id || 'imported',
+                        description: `Auto-created from transaction import.`,
+                        imageUrl: '',
+                        averageDailySales: 0,
+                        leadTimeDays: 7
+                    });
+                }
+            } else if (product && product.stock === 0 && Number(trn.quantity)) {
+                // If the product exists but has 0 stock (e.g. from a previous incomplete import), give it some stock
+                const qty = Number(trn.quantity);
+                if (!existingProductsUpdatesMap.has(product.id)) {
+                     existingProductsUpdatesMap.set(product.id, { id: product.id, stock: qty + 20 });
+                } else {
+                     const existingUpdate = existingProductsUpdatesMap.get(product.id)!;
+                     existingUpdate.stock = (existingUpdate.stock || 0) + qty;
+                }
+            }
 
-            await addTransaction({
-                productId: product.id,
+            return {
+                productId: product?.id,
+                sku: trn.sku || product?.sku,
+                productName: trn.productName || product?.name,
+                category: trn.category || product?.categoryId,
                 type: (trn.type || 'Sale') as 'Sale' | 'Purchase',
                 quantity: Number(trn.quantity) || 1,
-                price: Number(trn.price) || (trn.type === 'Purchase' ? product.costPrice : product.price),
+                price: Number(trn.price) || (trn.type === 'Purchase' ? product?.costPrice : product?.price) || 0,
+                totalRevenue: trn.totalRevenue,
+                costPerUnit: trn.costPerUnit,
+                totalCost: trn.totalCost,
+                supplier: trn.supplier,
+                customerName: trn.customerName,
+                paymentMethod: trn.paymentMethod,
+                status: trn.status,
+                transactionId: trn.transactionId,
                 transactionDate: trn.transactionDate ? new Date(trn.transactionDate).toISOString() : new Date().toISOString(),
                 locationId: 'MAIN-WAREHOUSE'
-            });
+            };
+        });
+
+        // 1. Create missing products first
+        if (missingProductsMap.size > 0) {
+            await bulkAddProducts(Array.from(missingProductsMap.values()));
         }
+
+        // 2. Update existing products stock if needed
+        if (existingProductsUpdatesMap.size > 0) {
+            await bulkUpdateProducts(Array.from(existingProductsUpdatesMap.values()));
+        }
+
+        // 3. Add transactions
+        await bulkAddTransactions(transactionsToImport);
       }
       onOpenChange(false);
       setStep('upload');

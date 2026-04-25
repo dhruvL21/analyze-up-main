@@ -56,11 +56,22 @@ export interface Location {
 
 export interface Transaction {
   id: string;
-  productId: string;
-  locationId: string;
+  transactionId?: string;
+  productId?: string;
+  productName?: string;
+  sku?: string;
+  category?: string;
+  locationId?: string;
   type: 'Sale' | 'Purchase';
   quantity: number;
   price: number; // Historical price at time of transaction
+  totalRevenue?: number;
+  costPerUnit?: number;
+  totalCost?: number;
+  supplier?: string;
+  customerName?: string;
+  paymentMethod?: string;
+  status?: string;
   transactionDate: string | FieldValue;
   createdAt: string | FieldValue;
   updatedAt: string | FieldValue;

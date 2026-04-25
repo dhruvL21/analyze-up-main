@@ -31,10 +31,22 @@ export const CategorySchema = z.object({
 // Zod schema for Transaction
 export const TransactionSchema = z.object({
   id: DocumentIdSchema.optional(),
-  productId: DocumentIdSchema,
+  transactionId: z.string().optional(),
+  productId: DocumentIdSchema.optional(),
+  productName: z.string().optional(),
+  sku: z.string().optional(),
+  category: z.string().optional(),
   locationId: z.string().optional(),
   type: z.enum(['Sale', 'Purchase']),
   quantity: z.number().positive({ message: "Quantity must be positive." }),
+  price: z.number().min(0).optional(),
+  totalRevenue: z.number().optional(),
+  costPerUnit: z.number().optional(),
+  totalCost: z.number().optional(),
+  supplier: z.string().optional(),
+  customerName: z.string().optional(),
+  paymentMethod: z.string().optional(),
+  status: z.string().optional(),
   transactionDate: z.string().datetime({ message: "Invalid date format." }),
   userId: z.string().optional(),
 });

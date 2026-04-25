@@ -29,10 +29,20 @@ export function AIStockAdvisor() {
 
   const handleGetSuggestions = () => {
     startTransition(async () => {
-        const lowStockProducts = products.filter(p => p.stock < 20);
-        if (lowStockProducts.length === 0) return;
+        // Sort by urgency: (stock / averageDailySales)
+        // If sales are 0, we prioritize by lowest stock
+        const prioritizedProducts = [...products]
+            .filter(p => p.stock < 20)
+            .sort((a, b) => {
+                const urgencyA = a.averageDailySales > 0 ? a.stock / a.averageDailySales : a.stock;
+                const urgencyB = b.averageDailySales > 0 ? b.stock / b.averageDailySales : b.stock;
+                return urgencyA - urgencyB;
+            })
+            .slice(0, 10);
+
+        if (prioritizedProducts.length === 0) return;
         
-        const promises = lowStockProducts.map(p => aiStockAdvisor({
+        const promises = prioritizedProducts.map(p => aiStockAdvisor({
             productName: p.name,
             currentStockLevel: p.stock,
             averageDailySales: p.averageDailySales,

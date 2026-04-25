@@ -47,6 +47,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { useData } from '@/context/data-context';
 import { getMonthlySalesData, getStockByCategoryData, getInventoryValueData } from '@/lib/chart-utils';
+import { generateReportInsights } from '@/ai/flows/report-generator';
 
 type ChartType =
   | 'bar'
@@ -122,30 +123,145 @@ export function DataVisualizer() {
   }, [data]); // Re-observe when data changes
 
   const handleDownload = useCallback(async () => {
-    if (!chartRef.current) return;
+    if (!chartRef.current || data.length === 0) return;
 
     setIsDownloading(true);
     try {
+      // 1. Get AI Insights
+      const insights = await generateReportInsights(
+        `Monthly ${metric.charAt(0).toUpperCase() + metric.slice(1)} Data`,
+        metric,
+        data
+      );
+
+      // 2. Capture Chart
       const canvas = await html2canvas(chartRef.current, {
-        backgroundColor: null, // Use parent background
+        backgroundColor: '#0a0a0a', // Dark theme background
         logging: false,
         useCORS: true,
+        scale: 2, // Higher quality
       });
 
       const imgData = canvas.toDataURL('image/png');
+      
+      // 3. Create PDF
       const pdf = new jsPDF({
-        orientation: 'landscape',
-        unit: 'px',
-        format: [canvas.width, canvas.height],
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
       });
-      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
-      pdf.save(`${chartType}-chart.pdf`);
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 20;
+      let cursorY = margin;
+
+      // Header
+      pdf.setFillColor(18, 18, 18); // Dark header
+      pdf.rect(0, 0, pageWidth, 40, 'F');
+      
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFontSize(22);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('AnalyzeUp Data Report', margin, 25);
+      
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(`Generated on ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, margin, 34);
+
+      cursorY = 50;
+
+      // Section: Overview
+      pdf.setTextColor(30, 30, 30);
+      pdf.setFontSize(16);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(`${metric.toUpperCase()} VISUALIZATION`, margin, cursorY);
+      cursorY += 10;
+
+      // Add Chart
+      const chartWidth = pageWidth - (margin * 2);
+      const chartHeight = (canvas.height * chartWidth) / canvas.width;
+      pdf.addImage(imgData, 'PNG', margin, cursorY, chartWidth, chartHeight);
+      cursorY += chartHeight + 15;
+
+      // Section: Data Summary
+      pdf.setFontSize(14);
+      pdf.text('Data Summary', margin, cursorY);
+      cursorY += 8;
+      
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      
+      const values = data.map(d => (d as any)[metric] || 0);
+      const total = values.reduce((a: number, b: number) => a + b, 0);
+      const avg = total / values.length;
+      const max = Math.max(...values);
+      const min = Math.min(...values);
+
+      const stats = [
+        `Total ${metric}: ₹${total.toLocaleString('en-IN')}`,
+        `Average ${metric}: ₹${avg.toLocaleString('en-IN')}`,
+        `Peak ${metric}: ₹${max.toLocaleString('en-IN')}`,
+        `Lowest ${metric}: ₹${min.toLocaleString('en-IN')}`
+      ];
+
+      stats.forEach(stat => {
+        pdf.text(`• ${stat}`, margin + 5, cursorY);
+        cursorY += 6;
+      });
+
+      cursorY += 10;
+
+      // Section: AI Insights
+      pdf.setFontSize(14);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('AI Strategic Insights', margin, cursorY);
+      cursorY += 8;
+
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      const summaryLines = pdf.splitTextToSize(insights.summary, pageWidth - (margin * 2));
+      pdf.text(summaryLines, margin, cursorY);
+      cursorY += (summaryLines.length * 5) + 8;
+
+      // Key Observations
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Key Observations:', margin, cursorY);
+      cursorY += 6;
+      pdf.setFont('helvetica', 'normal');
+      insights.keyObservations.forEach(obs => {
+        const obsLines = pdf.splitTextToSize(obs, pageWidth - (margin * 2) - 10);
+        pdf.text(`• `, margin + 2, cursorY);
+        pdf.text(obsLines, margin + 7, cursorY);
+        cursorY += (obsLines.length * 5) + 2;
+      });
+
+      cursorY += 8;
+
+      // Recommendations
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Business Recommendations:', margin, cursorY);
+      cursorY += 6;
+      pdf.setFont('helvetica', 'normal');
+      insights.recommendations.forEach(rec => {
+        const recLines = pdf.splitTextToSize(rec, pageWidth - (margin * 2) - 10);
+        pdf.text(`→ `, margin + 2, cursorY);
+        pdf.text(recLines, margin + 7, cursorY);
+        cursorY += (recLines.length * 5) + 2;
+      });
+
+      // Footer
+      pdf.setFontSize(8);
+      pdf.setTextColor(150, 150, 150);
+      pdf.text('This report was automatically generated by AnalyzeUp AI. Strategic decisions should be verified with complete financial audits.', pageWidth / 2, pageHeight - 10, { align: 'center' });
+
+      pdf.save(`AnalyzeUp-${metric}-Report.pdf`);
     } catch (err) {
       console.error('Failed to download PDF:', err);
     } finally {
       setIsDownloading(false);
     }
-  }, [chartType]);
+  }, [chartType, metric, data]);
   
   const renderChart = () => {
     const ChartComponent = chartComponents[chartType];
